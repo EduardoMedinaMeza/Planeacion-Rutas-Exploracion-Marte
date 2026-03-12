@@ -54,7 +54,7 @@ class Grid:
             for x in range(self.size_x):
                 self.grid[y][x].set_heuristic(dist((x, y), (x_goal, y_goal)))
 
-    def expand(self, node):
+    def expand(self, node, max_height_delta=0.25):
         directions = [
             (1, 0), (-1, 0), (0, 1), (0, -1),
             (1, 1), (1, -1), (-1, 1), (-1, -1)]
@@ -79,7 +79,7 @@ class Grid:
                 continue
 
             if neighbor.parent is None or neighbor.cost > node.cost + dist((x, y), (nx, ny)):
-                if abs(node.height - neighbor.height) < 0.25:
+                if abs(node.height - neighbor.height) < max_height_delta:
                     neighbor.parent = node
                     neighbor.cost = node.cost + dist((x, y), (nx, ny))
                     neighbors.append(neighbor)
@@ -87,9 +87,111 @@ class Grid:
         return neighbors
 
 
+def dsf_search(start, goal, grid):
+
+    start_x, start_y = start
+    goal_x, goal_y = goal
+
+    reached = np.zeros((grid.size_y, grid.size_x), dtype=bool)
+    node = grid.get_node(start_x, start_y)
+    node.cost = 0
+    frontier = grid.expand(node)
+
+    steps = 0
+    while node.x != goal_x or node.y != goal_y:
+        steps += 1
+        try:
+            node = frontier.pop(-1)
+        except IndexError:
+            print("Couldn't find path")
+            break
+        reached[node.y][node.x] = True
+        frontier += grid.expand(node)
+
+    path_cost = node.cost
+    print(f'Found path in {steps} steps \npath length: {path_cost:.2f} \ncart distance: {dist((start_x, start_y), (goal_x, goal_y)):.2f}')
+
+    path_x = []
+    path_y = []
+    while node.x != start_x or node.y != start_y:
+        path_x.append(node.x)
+        path_y.append(node.y)
+        node = node.parent
+
+    return (path_x, path_y), reached, path_cost
+
+
+def bsf_search(start, goal, grid):
+
+    start_x, start_y = start
+    goal_x, goal_y = goal
+
+    reached = np.zeros((grid.size_y, grid.size_x), dtype=bool)
+    node = grid.get_node(start_x, start_y)
+    node.cost = 0
+    frontier = grid.expand(node)
+
+    steps = 0
+    while node.x != goal_x or node.y != goal_y:
+        steps += 1
+        try:
+            node = frontier.pop(0)
+        except IndexError:
+            print("Couldn't find path")
+            break
+        reached[node.y][node.x] = True
+        frontier += grid.expand(node)
+
+    path_cost = node.cost
+    print(f'Found path in {steps} steps \npath length: {path_cost:.2f} \ncart distance: {dist((start_x, start_y), (goal_x, goal_y)):.2f}')
+
+    path_x = []
+    path_y = []
+    while node.x != start_x or node.y != start_y:
+        path_x.append(node.x)
+        path_y.append(node.y)
+        node = node.parent
+
+    return (path_x, path_y), reached, path_cost
+
+
+def astar_search(start, goal, grid):
+
+    start_x, start_y = start
+    goal_x, goal_y = goal
+
+    reached = np.zeros((grid.size_y, grid.size_x), dtype=bool)
+    node = grid.get_node(start_x, start_y)
+    node.cost = 0
+    frontier = grid.expand(node)
+
+    steps = 0
+    while node.x != goal_x or node.y != goal_y:
+        steps += 1
+        try:
+            node = frontier.pop(0)
+        except IndexError:
+            print("Couldn't find path")
+            break
+        reached[node.y][node.x] = True
+        frontier += grid.expand(node)
+
+    path_cost = node.cost
+    print(f'Found path in {steps} steps \npath length: {path_cost:.2f} \ncart distance: {dist((start_x, start_y), (goal_x, goal_y)):.2f}')
+
+    path_x = []
+    path_y = []
+    while node.x != start_x or node.y != start_y:
+        path_x.append(node.x)
+        path_y.append(node.y)
+        node = node.parent
+
+    return (path_x, path_y), reached, path_cost
+
+
 mars_map = np.load('mars_map.npy')
-size_y, size_x = mars_map.shape
-grid = Grid(size_x, size_y)
+yn, xn = mars_map.shape
+grid = Grid(xn, yn)
 grid.set_heights(mars_map)
 
 scale = 10.0174
@@ -97,45 +199,13 @@ scale = 10.0174
 # goal_x = round(2850/scale)
 # goal_y = size_y - round(6400/scale)
 
-goal_x = 170
-goal_y = 481
+goal = (65, 450)
+start = (round(3150/scale), yn - round(6800/scale))
 
-start_x = round(3150/scale)
-start_y = size_y - round(6800/scale)
-
-print(f'Start: {(start_x, start_y)}')
-print(f'End: {(goal_x, goal_y)}')
-
-reached = np.zeros((size_y, size_x), dtype=bool)
-
-node = grid.get_node(start_x, start_y)
-node.cost = 0
-frontier = grid.expand(node)
-
-steps = 0
-while node.x != goal_x or node.y != goal_y:
-    steps += 1
-    try:
-        node = frontier.pop(0)
-    except IndexError:
-        print("Couldn't find path")
-        break
-    reached[node.y][node.x] = True
-    frontier += grid.expand(node)
-
-print(f'Found path in {steps} steps \npath length: {node.cost:.2f} \ncart distance: {dist((start_x, start_y), (goal_x, goal_y)):.2f}')
-
-path_x = []
-path_y = []
-while node.x != start_x or node.y != start_y:
-    path_x.append(node.x)
-    path_y.append(node.y)
-    node = node.parent
-
-
-plt.imshow(mars_map, cmap='magma', interpolation='none')
-plt.imshow(ma.masked_where(reached, mars_map), cmap='gray')
-plt.scatter(goal_x, goal_y, color='red')
-plt.scatter(start_x, start_y, color='green')
-plt.plot(path_x, path_y)
+path, reached, length = dsf_search(start, goal, grid)
+plt.imshow(mars_map, cmap='viridis', interpolation='none')
+plt.imshow(ma.masked_where(reached, mars_map), cmap='gray', interpolation='none')
+plt.scatter(goal[0], goal[1], color='red')
+plt.scatter(start[0], start[1], color='green')
+plt.plot(path[0], path[1], color='black')
 plt.show()
