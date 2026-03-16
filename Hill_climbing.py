@@ -1,115 +1,166 @@
 import numpy as np
+from math import dist
 import matplotlib.pyplot as plt
-from pathfinding.core.diagonal_movement import DiagonalMovement
-from pathfinding.core.grid import Grid
-
-mars_map = np.load('mars_map.npy')
-nr, nc = mars_map.shape
-print(f"Dimensiones del mapa: {nr} filas x {nc} columnas")
-
-
-escala = 10.0174
-max_diferencia_altura = 0.3
-
-x_inicio = 2850
-y_inicio = 6400
-x_meta = 3150
-y_meta = 6800
-
-print(f"\nCoordenadas en metros:")
-print(f"Inicio: ({x_inicio}, {y_inicio})")
-print(f"Meta: ({x_meta}, {y_meta})")
-
-r_inicio = nr - round(y_inicio/escala)
-c_inicio = round(x_inicio/escala)
-
-
-r_meta = nr - round(y_meta/escala)
-c_meta = round(x_meta/escala)
-
-print(f"\nCoordenadas en píxeles:")
-print(f"Inicio: (renglón={r_inicio}, columna={c_inicio})")
-print(f"Meta: (renglón={r_meta}, columna={c_meta})")
+import numpy.ma as ma
 
 
 
-assert 0 <= r_inicio < nr, f"Renglón inicio {r_inicio} fuera de límites (0-{nr-1})"
-assert 0 <= c_inicio < nc, f"Columna inicio {c_inicio} fuera de límites (0-{nc-1})"
-assert 0 <= r_meta < nr, f"Renglón meta {r_meta} fuera de límites (0-{nr-1})"
-assert 0 <= c_meta < nc, f"Columna meta {c_meta} fuera de límites (0-{nc-1})"
-
-
-altura_inicio = mars_map[r_inicio, c_inicio]
-altura_meta = mars_map[r_meta, c_meta]
-
-print(f"\nAlturas:")
-print(f"Altura en inicio: {altura_inicio:.4f} m")
-print(f"Altura en meta: {altura_meta:.4f} m")
-
-if altura_inicio == -1:
-    print("¡ADVERTENCIA! El punto de inicio está en un pixel no válido (altura=-1)")
-if altura_meta == -1:
-    print("¡ADVERTENCIA! El punto de meta está en un pixel no válido (altura=-1)")
-
-
-
-cost_matrix = np.zeros((nr, nc), dtype=int)
-
-
-cost_matrix[mars_map == -1] = 1
-
-print(f"\nEstadísticas del mapa:")
-print(f"Píxeles totales: {nr * nc}")
-print(f"Píxeles no válidos (-1): {np.sum(mars_map == -1)}")
-print(f"Píxeles válidos: {np.sum(mars_map != -1)}")
-
-
-def es_movimiento_valido(altura_actual, altura_siguiente):
-    """Verifica si el movimiento es válido según la diferencia de altura"""
-    if altura_siguiente == -1:  # Pixel no válido
-        return False
-    diferencia = abs(altura_siguiente - altura_actual)
-    return diferencia < max_diferencia_altura
-
-
-class MarsGrid:
-    def __init__(self, matrix, altura_matrix, max_diff):
-        self.matrix = matrix
-        self.alturas = altura_matrix
-        self.max_diff = max_diff
-        self.rows, self.cols = matrix.shape
+class Node:
+    def __init__(self,x,y):
+        self.x = x
+        self.y = y
+        self.height = None
+        self.heuristic = None
         
-    def node_walkable(self, x, y):
-        """Verifica si un nodo es caminable"""
-        if x < 0 or x >= self.cols or y < 0 or y >= self.rows:
-            return False
-        # Primero verificar si no es obstáculo por valor -1
-        if self.matrix[y, x] == 1:
-            return False
-        return True
+    def set_height(self, height):
+        self.height = height
+    def set_heuristic(self, heuristic):
+        self.heuristic = heuristic
     
-    def can_move(self, from_x, from_y, to_x, to_y):
-        """Verifica si se puede mover de un nodo a otro"""
-        if not self.node_walkable(to_x, to_y):
-            return False
+    
+class Grid:
+    def __init__(self, size_x, size_y):
+        self.size_x = size_x
+        self.size_y = size_y
         
-        altura_actual = self.alturas[from_y, from_x]
-        altura_siguiente = self.alturas[to_y, to_x]
+        grid = []
+        for y in range(size_y):
+            grid.append([Node(x,y) for x in range(size_x)])
         
-        return es_movimiento_valido(altura_actual, altura_siguiente)
+        self.grid = grid
+    
+    def get_node(self,x,y):
+        return self.grid[y][x]
+    
+    def set_heights(self, height_map):
+        if len(height_map) != self.size_y or len(height_map[0]) != self.size_x:
+            raise Exception('The height map and grid sizes don\'t match')
+        
+        for y in range(self.size_y):
+            for x in range(self.size_x):
+                self.grid[y][x].set_height(height_map[y][x])
+    def distance_heuristic(self, x_goal, y_goal):
+        for y in range(self.size_y):
+            for x in range(self.size_x):
+                self.grid[y][x].set_heuristic(dist((x,y),(x_goal,y_goal)))
+    def expand(self, node):
+        directions = [(1,0),(-1,0),(0,1),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1)]
+        neighbors = []
+        x = node.x
+        y = node.y
+        for direction in directions:
+            new_x = x + direction[0]
+            new_y = y + direction[1]
+            if new_x >= 0 and new_x < self.size_x and new_y >= 0 and new_y < self.size_y:
+                neighbors.append(self.grid[new_y][new_x])
+        
+        return neighbors
+mars_map = np.load("mars_map.npy")
+size_y, size_x = mars_map.shape
 
 
-mars_grid = MarsGrid(cost_matrix, mars_map, max_diferencia_altura)
+grid = Grid(size_x, size_y)
+grid.set_heights(mars_map)
 
 
-grid = Grid(matrix=cost_matrix)
+scale = 10.0174
+max_diferencia_altura = 0.25
 
 
-start_node = grid.node(c_inicio, r_inicio)
-end_node = grid.node(c_meta, r_meta)
-
-print(f"\nNodos de inicio y meta:")
-print(f"Inicio: ({start_node.x}, {start_node.y}) - Caminable: {start_node.walkable}")
-print(f"Meta: ({end_node.x}, {end_node.y}) - Caminable: {end_node.walkable}")
+x_inicio, y_inicio = 2850, 6400
+x_meta, y_meta = 3150, 6800
 
 
+c_inicio = round(x_inicio / scale)
+r_inicio = size_y - round(y_inicio / scale)
+
+c_meta = round(x_meta / scale)
+r_meta = size_y - round(y_meta / scale)
+
+
+start_node = grid.get_node(c_inicio, r_inicio)
+goal_node = grid.get_node(c_meta, r_meta)
+
+
+grid.distance_heuristic(c_meta, r_meta)
+
+def hill_climbing(start_node, goal_node):
+    current_node = start_node
+    path = [current_node]
+    
+    while current_node != goal_node:
+        neighbors = grid.expand(current_node)
+        next_node = None
+        
+        for neighbor in neighbors:
+            if neighbor.height == -1:
+                continue
+            
+            if abs(neighbor.height - current_node.height) > max_diferencia_altura:
+                continue
+            
+            if next_node is None or neighbor.heuristic < next_node.heuristic:
+                next_node = neighbor
+        
+        if next_node is None or next_node.heuristic >= current_node.heuristic:
+            break
+        
+        current_node = next_node
+        path.append(current_node)
+    
+    return path
+
+
+# Ejecutar Hill Climbing
+path = hill_climbing(start_node, goal_node)
+print(f"Camino encontrado con {len(path)} pasos")
+
+# Preparar datos para visualización
+reached = np.zeros((size_y, size_x), dtype=bool)
+path_x = []
+path_y = []
+
+for node in path:
+    path_x.append(node.x)
+    path_y.append(node.y)
+    reached[node.y, node.x] = True
+
+# Calcular distancia recorrida
+distancia_total = 0
+for i in range(len(path)-1):
+    dx = abs(path[i+1].x - path[i].x)
+    dy = abs(path[i+1].y - path[i].y)
+    if dx != 0 and dy != 0:
+        distancia_total += np.sqrt(2) * scale  # diagonal
+    else:
+        distancia_total += 1 * scale  # cardinal
+print(f"Distancia total recorrida: {distancia_total:.2f} metros")
+
+# Visualización
+plt.figure(figsize=(12, 10))
+
+# Mostrar mapa de alturas
+plt.imshow(mars_map, cmap='magma', interpolation='none', alpha=0.7)
+plt.imshow(ma.masked_where(reached, mars_map), cmap='gray', alpha=0.3)
+
+# Marcar inicio y meta
+plt.scatter(c_meta, r_meta, color='red', s=100, label='Meta', edgecolors='white')
+plt.scatter(c_inicio, r_inicio, color='green', s=100, label='Inicio', edgecolors='white')
+
+# Dibujar camino
+plt.plot(path_x, path_y, 'cyan', linewidth=2, label='Camino Hill Climbing')
+
+plt.colorbar(label='Altura (metros)')
+plt.title(f'Hill Climbing - Distancia: {distancia_total:.2f} metros')
+plt.xlabel('Columna (píxeles)')
+plt.ylabel('Renglón (píxeles)')
+plt.legend()
+plt.grid(False)
+plt.tight_layout()
+plt.show()
+
+# Mostrar información adicional
+print(f"Coordenadas de inicio (píxeles): ({c_inicio}, {r_inicio})")
+print(f"Coordenadas de meta (píxeles): ({c_meta}, {r_meta})")
+print(f"Altura en inicio: {start_node.height:.4f} m")
+print(f"Altura en meta: {goal_node.height:.4f} m")

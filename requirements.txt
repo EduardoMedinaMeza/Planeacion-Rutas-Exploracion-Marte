@@ -1,6 +1,8 @@
 numpy
-pandas
+pathfinding
 planetaryimage
 matplotlib
 Pillow
 scikit-image
+plotly
+skimage
